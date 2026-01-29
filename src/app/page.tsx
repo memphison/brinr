@@ -16,6 +16,7 @@ type Tin = {
   country: string
   packing: string
   notes: string | null
+  image_url: string | null
 }
 
 type Rating = {
@@ -286,31 +287,54 @@ export default function Home() {
         )}
       </div>
 
-      <ul className="space-y-3">
-        {filteredTins.map((tin) => (
-          <Link key={tin.id} href={`/tins/${tin.id}`}>
-            <li className="border rounded p-4 hover:bg-gray-50 transition cursor-pointer">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="font-medium">{tin.brand}</div>
-                  <div className="text-sm text-gray-600 dark:text-white">
-                    {tin.product_name}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-white mt-1">
-                    {tin.fish_type} • {tin.country} • {tin.packing}
-                  </div>
-                </div>
+     <ul className="space-y-3">
+  {filteredTins.map((tin) => (
+    <Link key={tin.id} href={`/tins/${tin.id}`}>
+      <li className="border rounded p-4 hover:bg-gray-50 transition cursor-pointer">
+        <div className="flex items-start justify-between gap-4">
+          
+          {/* Left content */}
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <div className="font-medium">{tin.brand}</div>
 
-                {ratedTinIds.has(tin.id) && (
-                  <div className="text-xs text-yellow-600 shrink-0">
-                    ★ Rated
-                  </div>
-                )}
-              </div>
-            </li>
-          </Link>
-        ))}
-      </ul>
+              {ratedTinIds.has(tin.id) && (
+                <span className="text-xs text-yellow-600">
+                  ★ Rated
+                </span>
+              )}
+            </div>
+
+            <div className="text-sm text-gray-600 dark:text-white">
+              {tin.product_name}
+            </div>
+
+            <div className="text-xs text-gray-500 dark:text-white mt-1">
+              {tin.fish_type} • {tin.country} • {tin.packing}
+            </div>
+          </div>
+
+          {/* Right image */}
+   {tin.image_url && (
+  <div className="w-20 h-20 shrink-0">
+    <Image
+      src={tin.image_url.trim()}
+      alt={tin.product_name}
+      width={96}
+      height={96}
+      className="object-contain rounded bg-gray-50 p-1"
+    />
+  </div>
+)}
+
+
+
+        </div>
+      </li>
+    </Link>
+  ))}
+</ul>
+
     </main>
   )
 }

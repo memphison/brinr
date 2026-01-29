@@ -12,6 +12,7 @@ type Tin = {
   country: string
   packing: string
   notes: string | null
+  image_url: string | null
 }
 
 type Rating = {
@@ -68,21 +69,32 @@ export default async function TinPage({
         ← Back
       </Link>
 
-      {/* Header */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold">{tin.brand}</h1>
-        <div className="text-lg text-gray-600 dark:text-white">
-          {tin.product_name}
+      {/* Header + image */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold">{tin.brand}</h1>
+          <div className="text-lg text-gray-600 dark:text-white">
+            {tin.product_name}
+          </div>
+
+          <div className="text-sm text-gray-600 dark:text-white">
+            {tin.fish_type} • {tin.country}
+          </div>
+
+          <div className="text-sm text-gray-500 dark:text-white">
+            Packed in {tin.packing}
+          </div>
         </div>
-      </div>
 
-      {/* Meta */}
-      <div className="text-sm text-gray-600 dark:text-white">
-        {tin.fish_type} • {tin.country}
-      </div>
+{tin.image_url && (
+  <img
+    src={tin.image_url.trim()}
+    alt={tin.product_name}
+    className="w-48 h-48 object-contain rounded bg-gray-50 p-2 shrink-0"
+  />
+)}
 
-      <div className="text-sm text-gray-500 dark:text-white">
-        Packed in {tin.packing}
+
       </div>
 
       {/* Editorial tin notes only */}
@@ -92,7 +104,7 @@ export default async function TinPage({
         </div>
       )}
 
-      {/* Ratings + user notes live entirely here */}
+      {/* Ratings + user notes */}
       <RatingStats
         tinId={tin.id}
         initialAvg={avg}
