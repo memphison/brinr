@@ -2,9 +2,10 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
+
 
 type Tin = {
   id: string
@@ -31,6 +32,25 @@ const [filters, setFilters] = useState({
   country: 'all',
   packing: 'all',
 })
+
+const [search, setSearch] = useState('')
+
+useEffect(() => {
+  if (typeof window === 'undefined') return
+
+  const stored = localStorage.getItem('brinr-filters')
+  if (stored) {
+    const parsed = JSON.parse(stored)
+    setFilter(parsed.filter ?? 'all')
+    setFilters(parsed.filters ?? {
+      fish_type: 'all',
+      country: 'all',
+      packing: 'all',
+    })
+    setSearch(parsed.search ?? '')
+  }
+}, [])
+
 
 
   useEffect(() => {
@@ -65,6 +85,28 @@ const [filters, setFilters] = useState({
     loadData()
   }, [])
 
+useEffect(() => {
+  localStorage.setItem(
+    'brinr-filters',
+    JSON.stringify({
+      filter,
+      filters,
+      search,
+    })
+  )
+}, [filter, filters, search])
+
+const clearFilters = () => {
+  setFilter('all')
+  setFilters({
+    fish_type: 'all',
+    country: 'all',
+    packing: 'all',
+  })
+  setSearch('')
+}
+
+
 const uniqueValues = (key: keyof Tin) =>
   Array.from(
     new Set(
@@ -74,6 +116,21 @@ const uniqueValues = (key: keyof Tin) =>
     )
   ).sort()
 
+const fishTypes = useMemo(
+  () => uniqueValues('fish_type'),
+  [tins]
+)
+
+const countries = useMemo(
+  () => uniqueValues('country'),
+  [tins]
+)
+
+const packings = useMemo(
+  () => uniqueValues('packing'),
+  [tins]
+)
+
 
   const filteredTins = tins.filter((tin) => {
   if (filter === 'rated' && !ratedTinIds.has(tin.id)) return false
@@ -82,23 +139,31 @@ const uniqueValues = (key: keyof Tin) =>
   if (
     filters.fish_type !== 'all' &&
     tin.fish_type !== filters.fish_type
-  )
-    return false
+  ) return false
 
   if (
     filters.country !== 'all' &&
     tin.country !== filters.country
-  )
-    return false
+  ) return false
 
   if (
     filters.packing !== 'all' &&
     tin.packing !== filters.packing
-  )
-    return false
+  ) return false
+
+  if (search.trim()) {
+    const q = search.toLowerCase()
+    if (
+      !tin.brand.toLowerCase().includes(q) &&
+      !tin.product_name.toLowerCase().includes(q)
+    ) {
+      return false
+    }
+  }
 
   return true
 })
+
 
 
   if (loading) {
@@ -150,7 +215,8 @@ const uniqueValues = (key: keyof Tin) =>
             className="border rounded px-2 py-1 bg-transparent"
           >
             <option value="all">All fish</option>
-            {uniqueValues('fish_type').map((v) => (
+            {fishTypes.map((v) => (
+
               <option key={v} value={v}>
                 {v}
               </option>
@@ -165,7 +231,8 @@ const uniqueValues = (key: keyof Tin) =>
             className="border rounded px-2 py-1 bg-transparent"
           >
             <option value="all">All countries</option>
-            {uniqueValues('country').map((v) => (
+            {countries.map((v) => (
+
               <option key={v} value={v}>
                 {v}
               </option>
@@ -180,7 +247,8 @@ const uniqueValues = (key: keyof Tin) =>
             className="border rounded px-2 py-1 bg-transparent"
           >
             <option value="all">All packing</option>
-            {uniqueValues('packing').map((v) => (
+            {packings.map((v) => (
+
               <option key={v} value={v}>
                 {v}
               </option>
@@ -189,6 +257,30 @@ const uniqueValues = (key: keyof Tin) =>
         </div>
       </div>
 
+{/* Search */}
+<div className="space-y-2">
+<input
+  type="text"
+  value={search}
+  onChange={(e) => setSearch(e.target.value)}
+  placeholder="Search brand or product…"
+  className="w-full border rounded px-3 py-2 text-sm bg-transparent"
+/>
+
+{/* Clear filters */}
+{(filter !== 'all' ||
+  filters.fish_type !== 'all' ||
+  filters.country !== 'all' ||
+  filters.packing !== 'all' ||
+  search) && (
+  <button
+    onClick={clearFilters}
+    className="text-xs text-gray-500 dark:text-white underline"
+  >
+    Clear filters
+  </button>
+)}
+</div>
 
       <ul className="space-y-3">
         {filteredTins.map((tin) => {
@@ -204,8 +296,9 @@ const uniqueValues = (key: keyof Tin) =>
           {tin.product_name}
         </div>
         <div className="text-xs text-gray-500 dark:text-white mt-1">
-          {tin.fish_type} • {tin.country}
-        </div>
+  {tin.fish_type} • {tin.country} • {tin.packing}
+</div>
+
       </div>
 
       {ratedTinIds.has(tin.id) && (
