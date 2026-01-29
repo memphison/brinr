@@ -169,7 +169,7 @@ export default function Home() {
           <Image
             src="/brinr-logo.png"
             alt="Brinr"
-            width={180}
+            width={540}
             height={65}
             priority
           />
@@ -189,7 +189,7 @@ export default function Home() {
         <Image
           src="/brinr-logo.png"
           alt="Brinr"
-          width={180}
+          width={540}
           height={65}
           priority
         />
