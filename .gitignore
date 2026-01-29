@@ -3,3 +3,5 @@ node_modules
 .env
 .env.local
 .vercel
+scripts/scrape-fishwife.mjs
+scripts/scrape-josegourmet.mjs
