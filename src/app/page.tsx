@@ -320,8 +320,8 @@ export default function Home() {
     <Image
       src={tin.image_url.trim()}
       alt={tin.product_name}
-      width={96}
-      height={96}
+      width={112}
+      height={112}
       className="object-contain rounded bg-gray-50 p-1"
     />
   </div>
