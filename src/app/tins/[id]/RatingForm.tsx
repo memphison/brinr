@@ -2,7 +2,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 type Props = {
@@ -71,6 +71,7 @@ export default function RatingForm({
       return
     }
 
+    // Optimistic commit
     setRating(nextRating)
     setPendingRating(null)
     setDirtyNotes(false)
@@ -80,36 +81,59 @@ export default function RatingForm({
     setLoading(false)
   }
 
-  const handleStarClick = async (value: number) => {
-    // First-time rating saves immediately
+  const handleStarClick = (value: number) => {
     if (!hasExistingRating) {
-      await upsertRating(value, notes.trim() || null)
+      upsertRating(value, notes.trim() || null)
       return
     }
 
-    // Editing existing rating: stage it
     setPendingRating(value)
   }
 
-  const handleSaveRating = async () => {
-    if (pendingRating === null) return
-    await upsertRating(
-      pendingRating,
-      notes.trim() || null
-    )
+  const handleSaveRating = () => {
+    if (!dirtyRating || pendingRating === null) return
+    upsertRating(pendingRating, notes.trim() || null)
   }
 
-  const handleSaveNotes = async () => {
+  const handleSaveNotes = () => {
     if (effectiveRating === null) {
       setError('Add a rating before saving notes.')
       return
     }
 
-    await upsertRating(
-      effectiveRating,
-      notes.trim() || null
-    )
+    upsertRating(effectiveRating, notes.trim() || null)
   }
+
+  // Keyboard support
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (loading) return
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        const next = Math.max(1, (effectiveRating ?? 1) - 1)
+        setPendingRating(next)
+      }
+
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        const next = Math.min(5, (effectiveRating ?? 0) + 1)
+        setPendingRating(next)
+      }
+
+      if (e.key === 'Enter' && dirtyRating) {
+        e.preventDefault()
+        handleSaveRating()
+      }
+
+      if (e.key === 'Escape') {
+        setPendingRating(null)
+      }
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [effectiveRating, dirtyRating, loading])
 
   return (
     <div className="space-y-3">
@@ -120,7 +144,8 @@ export default function RatingForm({
             key={n}
             disabled={loading}
             onClick={() => handleStarClick(n)}
-            className={`text-2xl ${
+            aria-label={`Rate ${n} stars`}
+            className={`text-2xl focus:outline-none ${
               effectiveRating && n <= effectiveRating
                 ? 'text-yellow-500'
                 : 'text-gray-300'
@@ -131,17 +156,23 @@ export default function RatingForm({
         ))}
       </div>
 
-           {/* Action row */}
+      {/* Action row */}
       <div className="flex items-center gap-3 flex-wrap">
-        {dirtyRating && (
+        <div
+          className={`transition-all duration-200 ease-out ${
+            dirtyRating
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 -translate-y-1 pointer-events-none'
+          }`}
+        >
           <button
             onClick={handleSaveRating}
-            disabled={loading}
-            className="text-sm px-3 py-1 border rounded"
+            disabled={loading || !dirtyRating}
+            className="text-sm px-3 py-1 border rounded disabled:opacity-50"
           >
             Save rating
           </button>
-        )}
+        </div>
 
         {!isEditingNotes && (
           <button
@@ -154,15 +185,14 @@ export default function RatingForm({
         )}
       </div>
 
-      {/* Saved note view */}
+      {/* Saved note */}
       {!isEditingNotes && notes && (
         <div className="text-sm italic text-gray-600 dark:text-white">
           “{notes}”
         </div>
       )}
 
-
-      {/* Notes edit */}
+      {/* Notes editor */}
       {isEditingNotes && (
         <div className="space-y-2">
           <textarea
