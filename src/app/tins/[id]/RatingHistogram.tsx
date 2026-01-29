@@ -18,17 +18,17 @@ export default function RatingHistogram({ tinId, userRating }: Props) {
   useEffect(() => {
     const cacheKey = `histogram:${tinId}`
 
-    const loadHistogram = async () => {
-      // 1️⃣ Try session cache first
-      const cached = sessionStorage.getItem(cacheKey)
-      if (cached) {
-        setBuckets(JSON.parse(cached))
-        setLoading(false)
-        requestAnimationFrame(() => setAnimate(true))
-        return
+    const loadHistogram = async (forceRefresh = false) => {
+      if (!forceRefresh) {
+        const cached = sessionStorage.getItem(cacheKey)
+        if (cached) {
+          setBuckets(JSON.parse(cached))
+          setLoading(false)
+          requestAnimationFrame(() => setAnimate(true))
+          return
+        }
       }
 
-      // 2️⃣ Fetch from Supabase
       const { data, error } = await supabase
         .from('ratings')
         .select('rating')
@@ -48,7 +48,7 @@ export default function RatingHistogram({ tinId, userRating }: Props) {
       }
 
       data.forEach((r) => {
-        counts[r.rating] = (counts[r.rating] || 0) + 1
+        counts[r.rating] += 1
       })
 
       sessionStorage.setItem(cacheKey, JSON.stringify(counts))
@@ -59,6 +59,45 @@ export default function RatingHistogram({ tinId, userRating }: Props) {
 
     loadHistogram()
   }, [tinId])
+
+  // 🔄 Force refresh when user rating changes
+  useEffect(() => {
+    if (userRating === undefined) return
+
+    const cacheKey = `histogram:${tinId}`
+    sessionStorage.removeItem(cacheKey)
+
+    setAnimate(false)
+    setLoading(true)
+
+    const refresh = async () => {
+      const { data } = await supabase
+        .from('ratings')
+        .select('rating')
+        .eq('tin_id', tinId)
+
+      if (!data) return
+
+      const counts: Record<number, number> = {
+        1: 0,
+        2: 0,
+        3: 0,
+        4: 0,
+        5: 0,
+      }
+
+      data.forEach((r) => {
+        counts[r.rating] += 1
+      })
+
+      sessionStorage.setItem(cacheKey, JSON.stringify(counts))
+      setBuckets(counts)
+      setLoading(false)
+      requestAnimationFrame(() => setAnimate(true))
+    }
+
+    refresh()
+  }, [userRating, tinId])
 
   if (loading) return null
 

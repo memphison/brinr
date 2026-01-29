@@ -19,11 +19,19 @@ export default function RatingForm({
   onRated,
 }: Props) {
   const [rating, setRating] = useState<number | null>(initialRating)
+  const [pendingRating, setPendingRating] = useState<number | null>(null)
+
   const [notes, setNotes] = useState(initialNotes ?? '')
-  const [isEditing, setIsEditing] = useState(false)
+  const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [dirtyNotes, setDirtyNotes] = useState(false)
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const hasExistingRating = initialRating !== null
+  const effectiveRating = pendingRating ?? rating
+  const dirtyRating =
+    pendingRating !== null && pendingRating !== rating
 
   const getUser = async () => {
     const {
@@ -33,7 +41,7 @@ export default function RatingForm({
   }
 
   const upsertRating = async (
-    nextRating: number | null,
+    nextRating: number,
     nextNotes: string | null
   ) => {
     const user = await getUser()
@@ -63,24 +71,44 @@ export default function RatingForm({
       return
     }
 
-    onRated(nextRating ?? rating!, nextNotes)
+    setRating(nextRating)
+    setPendingRating(null)
     setDirtyNotes(false)
-    setIsEditing(false)
+    setIsEditingNotes(false)
+
+    onRated(nextRating, nextNotes)
     setLoading(false)
   }
 
   const handleStarClick = async (value: number) => {
-    setRating(value)
-    await upsertRating(value, notes.trim() || null)
+    // First-time rating saves immediately
+    if (!hasExistingRating) {
+      await upsertRating(value, notes.trim() || null)
+      return
+    }
+
+    // Editing existing rating: stage it
+    setPendingRating(value)
+  }
+
+  const handleSaveRating = async () => {
+    if (pendingRating === null) return
+    await upsertRating(
+      pendingRating,
+      notes.trim() || null
+    )
   }
 
   const handleSaveNotes = async () => {
-    if (rating === null) {
+    if (effectiveRating === null) {
       setError('Add a rating before saving notes.')
       return
     }
 
-    await upsertRating(rating, notes.trim() || null)
+    await upsertRating(
+      effectiveRating,
+      notes.trim() || null
+    )
   }
 
   return (
@@ -93,7 +121,9 @@ export default function RatingForm({
             disabled={loading}
             onClick={() => handleStarClick(n)}
             className={`text-2xl ${
-              rating && n <= rating ? 'text-yellow-500' : 'text-gray-300'
+              effectiveRating && n <= effectiveRating
+                ? 'text-yellow-500'
+                : 'text-gray-300'
             }`}
           >
             ★
@@ -101,26 +131,39 @@ export default function RatingForm({
         ))}
       </div>
 
+           {/* Action row */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {dirtyRating && (
+          <button
+            onClick={handleSaveRating}
+            disabled={loading}
+            className="text-sm px-3 py-1 border rounded"
+          >
+            Save rating
+          </button>
+        )}
+
+        {!isEditingNotes && (
+          <button
+            type="button"
+            onClick={() => setIsEditingNotes(true)}
+            className="text-xs text-gray-500 dark:text-white"
+          >
+            {notes ? 'Edit note' : 'Add a note'}
+          </button>
+        )}
+      </div>
+
       {/* Saved note view */}
-      {!isEditing && notes && (
+      {!isEditingNotes && notes && (
         <div className="text-sm italic text-gray-600 dark:text-white">
           “{notes}”
         </div>
       )}
 
-      {/* Edit toggle */}
-      {!isEditing && (
-        <button
-          type="button"
-          onClick={() => setIsEditing(true)}
-          className="text-xs text-gray-500 dark:text-white"
-        >
-          {notes ? 'Edit note' : 'Add a note'}
-        </button>
-      )}
 
-      {/* Edit mode */}
-      {isEditing && (
+      {/* Notes edit */}
+      {isEditingNotes && (
         <div className="space-y-2">
           <textarea
             value={notes}
@@ -135,8 +178,8 @@ export default function RatingForm({
 
           <button
             onClick={handleSaveNotes}
-            disabled={loading || !dirtyNotes}
-            className="text-sm px-3 py-1 border rounded disabled:opacity-50"
+            disabled={loading}
+            className="text-sm px-3 py-1 border rounded"
           >
             Save note
           </button>
