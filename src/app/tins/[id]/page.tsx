@@ -33,7 +33,7 @@ export default async function TinPage({
 
   if (error || !tin) {
     return (
-      <main className="p-6 max-w-xl mx-auto">
+      <main className="p-6 max-w-xl mx-auto overflow-x-hidden">
         <Link
           href="/"
           className="inline-flex items-center text-sm text-gray-500 dark:text-white py-2"
@@ -59,7 +59,7 @@ export default async function TinPage({
       : null
 
   return (
-    <main className="p-5 sm:p-6 max-w-xl mx-auto space-y-5">
+    <main className="p-5 sm:p-6 max-w-xl mx-auto space-y-5 overflow-x-hidden">
       {/* Back nav */}
       <Link
         href="/"
@@ -85,14 +85,14 @@ export default async function TinPage({
         Packed in {tin.packing}
       </div>
 
-      {/* Tin notes */}
+      {/* Editorial tin notes only */}
       {tin.notes && (
         <div className="text-sm italic text-gray-600 dark:text-white border-t pt-4">
           {tin.notes}
         </div>
       )}
 
-      {/* Ratings */}
+      {/* Ratings + user notes live entirely here */}
       <RatingStats
         tinId={tin.id}
         initialAvg={avg}

@@ -21,6 +21,7 @@ export default function RatingStats({
   const [avg, setAvg] = useState<string | null>(initialAvg)
   const [userRating, setUserRating] = useState<number | null>(null)
   const [userNotes, setUserNotes] = useState<string | null>(null)
+  const [editingNotes, setEditingNotes] = useState(false)
 
   useEffect(() => {
     const loadUserRating = async () => {
@@ -61,6 +62,7 @@ export default function RatingStats({
     setAvg(newAvg)
     setUserRating(value)
     setUserNotes(notes)
+    setEditingNotes(false)
   }
 
   return (
@@ -80,20 +82,30 @@ export default function RatingStats({
         )}
       </div>
 
-      {/* User note (read-only) */}
-      {userNotes && (
-        <div className="text-sm italic text-gray-600 dark:text-white">
-          “{userNotes}”
+      {/* Saved note (read-only) */}
+      {userNotes && !editingNotes && (
+        <div className="space-y-2">
+          <div className="text-sm italic text-gray-600 dark:text-white">
+            “{userNotes}”
+          </div>
+          <button
+            onClick={() => setEditingNotes(true)}
+            className="text-sm text-blue-600"
+          >
+            Edit my notes
+          </button>
         </div>
       )}
 
-      {/* Rating form */}
-      <RatingForm
-        tinId={tinId}
-        initialRating={userRating}
-        initialNotes={userNotes}
-        onRated={handleNewRating}
-      />
+      {/* Rating + note editor */}
+      {(!userNotes || editingNotes) && (
+        <RatingForm
+          tinId={tinId}
+          initialRating={userRating}
+          initialNotes={userNotes}
+          onRated={handleNewRating}
+        />
+      )}
     </div>
   )
 }

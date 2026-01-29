@@ -7,58 +7,80 @@ import { supabase } from '@/lib/supabaseClient'
 
 type Props = {
   tinId: string
-  onRated: (value: number, notes: string | null) => void
   initialRating?: number | null
   initialNotes?: string | null
+  onRated: (value: number, notes: string | null) => void
 }
 
 export default function RatingForm({
   tinId,
-  onRated,
   initialRating = null,
   initialNotes = null,
+  onRated,
 }: Props) {
   const [rating, setRating] = useState<number | null>(initialRating)
-  const [notes, setNotes] = useState<string>(initialNotes ?? '')
-  const [showNotes, setShowNotes] = useState(!!initialNotes)
+  const [notes, setNotes] = useState(initialNotes ?? '')
+  const [isEditing, setIsEditing] = useState(false)
+  const [dirtyNotes, setDirtyNotes] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const submitRating = async (value: number) => {
-    setRating(value)
-    setLoading(true)
-    setError(null)
-
+  const getUser = async () => {
     const {
       data: { user },
     } = await supabase.auth.getUser()
+    return user
+  }
 
+  const upsertRating = async (
+    nextRating: number | null,
+    nextNotes: string | null
+  ) => {
+    const user = await getUser()
     if (!user) {
       setError('You must be signed in to rate.')
-      setLoading(false)
       return
     }
 
-    const { error: upsertError } = await supabase
+    setLoading(true)
+    setError(null)
+
+    const { error } = await supabase
       .from('ratings')
       .upsert(
         {
           tin_id: tinId,
           user_id: user.id,
-          rating: value,
-          notes: notes.trim() || null,
+          rating: nextRating,
+          notes: nextNotes,
         },
         { onConflict: 'user_id,tin_id' }
       )
 
-    if (upsertError) {
+    if (error) {
       setError('Something went wrong.')
       setLoading(false)
       return
     }
 
-    onRated(value, notes.trim() || null)
+    onRated(nextRating ?? rating!, nextNotes)
+    setDirtyNotes(false)
+    setIsEditing(false)
     setLoading(false)
+  }
+
+  const handleStarClick = async (value: number) => {
+    setRating(value)
+    await upsertRating(value, notes.trim() || null)
+  }
+
+  const handleSaveNotes = async () => {
+    if (rating === null) {
+      setError('Add a rating before saving notes.')
+      return
+    }
+
+    await upsertRating(rating, notes.trim() || null)
   }
 
   return (
@@ -69,7 +91,7 @@ export default function RatingForm({
           <button
             key={n}
             disabled={loading}
-            onClick={() => submitRating(n)}
+            onClick={() => handleStarClick(n)}
             className={`text-2xl ${
               rating && n <= rating ? 'text-yellow-500' : 'text-gray-300'
             }`}
@@ -79,24 +101,46 @@ export default function RatingForm({
         ))}
       </div>
 
-      {/* Notes toggle */}
-      <button
-        type="button"
-        onClick={() => setShowNotes((v) => !v)}
-        className="text-xs text-gray-500 dark:text-white"
-      >
-        {showNotes ? 'Hide notes' : 'Add a note'}
-      </button>
+      {/* Saved note view */}
+      {!isEditing && notes && (
+        <div className="text-sm italic text-gray-600 dark:text-white">
+          “{notes}”
+        </div>
+      )}
 
-      {/* Notes field */}
-      {showNotes && (
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          maxLength={240}
-          placeholder="Smoky, clean oil, great on toast…"
-          className="w-full text-sm border rounded p-2 bg-transparent"
-        />
+      {/* Edit toggle */}
+      {!isEditing && (
+        <button
+          type="button"
+          onClick={() => setIsEditing(true)}
+          className="text-xs text-gray-500 dark:text-white"
+        >
+          {notes ? 'Edit my notes' : 'Add a note'}
+        </button>
+      )}
+
+      {/* Edit mode */}
+      {isEditing && (
+        <div className="space-y-2">
+          <textarea
+            value={notes}
+            onChange={(e) => {
+              setNotes(e.target.value)
+              setDirtyNotes(true)
+            }}
+            maxLength={240}
+            placeholder="Smoky, clean oil, great on toast…"
+            className="w-full text-sm border rounded p-2 bg-transparent"
+          />
+
+          <button
+            onClick={handleSaveNotes}
+            disabled={loading || !dirtyNotes}
+            className="text-sm px-3 py-1 border rounded disabled:opacity-50"
+          >
+            Save note
+          </button>
+        </div>
       )}
 
       {error && <div className="text-sm text-red-600">{error}</div>}
