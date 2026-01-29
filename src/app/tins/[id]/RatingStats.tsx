@@ -92,7 +92,7 @@ export default function RatingStats({
             onClick={() => setEditingNotes(true)}
             className="text-sm text-blue-600"
           >
-            Edit my notes
+            Edit note
           </button>
         </div>
       )}

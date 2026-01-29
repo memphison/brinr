@@ -115,7 +115,7 @@ export default function RatingForm({
           onClick={() => setIsEditing(true)}
           className="text-xs text-gray-500 dark:text-white"
         >
-          {notes ? 'Edit my notes' : 'Add a note'}
+          {notes ? 'Edit note' : 'Add a note'}
         </button>
       )}
 
