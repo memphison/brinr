@@ -28,7 +28,6 @@ export default function Home() {
 
   useEffect(() => {
     const loadData = async () => {
-      // Fetch tins
       const { data: tinsData } = await supabase
         .from('tins')
         .select('*')
@@ -38,7 +37,6 @@ export default function Home() {
         setTins(tinsData)
       }
 
-      // Fetch user ratings if signed in
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -70,7 +68,9 @@ export default function Home() {
     return (
       <main className="p-6 max-w-xl mx-auto">
         <h1 className="text-2xl font-bold">Brinr</h1>
-        <div className="text-sm text-gray-500 mt-4">Loading tins…</div>
+        <div className="text-sm text-gray-500 dark:text-white mt-4">
+          Loading tins…
+        </div>
       </main>
     )
   }
@@ -83,19 +83,19 @@ export default function Home() {
       <div className="flex gap-4 text-sm">
         <button
           onClick={() => setFilter('all')}
-          className={filter === 'all' ? 'font-medium' : 'text-gray-500'}
+          className={filter === 'all' ? 'font-medium' : 'text-gray-500 dark:text-white'}
         >
           All
         </button>
         <button
           onClick={() => setFilter('rated')}
-          className={filter === 'rated' ? 'font-medium' : 'text-gray-500'}
+          className={filter === 'rated' ? 'font-medium' : 'text-gray-500 dark:text-white'}
         >
           Rated
         </button>
         <button
           onClick={() => setFilter('unrated')}
-          className={filter === 'unrated' ? 'font-medium' : 'text-gray-500'}
+          className={filter === 'unrated' ? 'font-medium' : 'text-gray-500 dark:text-white'}
         >
           Not rated
         </button>
@@ -107,14 +107,16 @@ export default function Home() {
 
           return (
             <Link key={tin.id} href={`/tins/${tin.id}`}>
-              <li className="border rounded p-4 hover:bg-gray-50 transition cursor-pointer">
+              <li className="border rounded p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="font-medium">{tin.brand}</div>
-                    <div className="text-sm text-gray-600">
+
+                    <div className="text-sm text-gray-600 dark:text-white">
                       {tin.product_name}
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
+
+                    <div className="text-xs text-gray-500 dark:text-white mt-1">
                       {tin.fish_type} • {tin.country}
                     </div>
                   </div>

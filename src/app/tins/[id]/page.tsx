@@ -25,7 +25,6 @@ export default async function TinPage({
 }) {
   const { id } = await params
 
-  // Fetch tin
   const { data: tin, error } = await supabase
     .from('tins')
     .select('*')
@@ -37,7 +36,7 @@ export default async function TinPage({
       <main className="p-6 max-w-xl mx-auto">
         <Link
           href="/"
-          className="inline-flex items-center text-sm text-gray-500 py-2"
+          className="inline-flex items-center text-sm text-gray-500 dark:text-white py-2"
         >
           ← Back
         </Link>
@@ -46,7 +45,6 @@ export default async function TinPage({
     )
   }
 
-  // Fetch ratings
   const { data: ratings } = await supabase
     .from('ratings')
     .select('rating')
@@ -65,7 +63,7 @@ export default async function TinPage({
       {/* Back nav */}
       <Link
         href="/"
-        className="inline-flex items-center text-sm text-gray-500 py-2"
+        className="inline-flex items-center text-sm text-gray-500 dark:text-white py-2"
       >
         ← Back
       </Link>
@@ -73,21 +71,23 @@ export default async function TinPage({
       {/* Header */}
       <div className="space-y-1">
         <h1 className="text-2xl font-bold">{tin.brand}</h1>
-        <div className="text-lg">{tin.product_name}</div>
+        <div className="text-lg text-gray-600 dark:text-white">
+          {tin.product_name}
+        </div>
       </div>
 
       {/* Meta */}
-      <div className="text-sm text-gray-600">
+      <div className="text-sm text-gray-600 dark:text-white">
         {tin.fish_type} • {tin.country}
       </div>
 
-      <div className="text-sm text-gray-500">
+      <div className="text-sm text-gray-500 dark:text-white">
         Packed in {tin.packing}
       </div>
 
       {/* Tin notes */}
       {tin.notes && (
-        <div className="text-sm italic text-gray-600 border-t pt-4">
+        <div className="text-sm italic text-gray-600 dark:text-white border-t pt-4">
           {tin.notes}
         </div>
       )}
