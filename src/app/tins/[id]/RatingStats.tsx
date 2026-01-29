@@ -5,6 +5,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import RatingForm from './RatingForm'
+import RatingHistogram from './RatingHistogram'
+
 
 type Props = {
   tinId: string
@@ -81,6 +83,9 @@ export default function RatingStats({
           <span className="text-gray-400">No ratings yet</span>
         )}
       </div>
+
+      <RatingHistogram tinId={tinId} />
+
 
       {/* Saved note (read-only) */}
       {userNotes && !editingNotes && (
