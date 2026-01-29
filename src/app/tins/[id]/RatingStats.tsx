@@ -84,7 +84,8 @@ export default function RatingStats({
         )}
       </div>
 
-      <RatingHistogram tinId={tinId} />
+      <RatingHistogram tinId={tinId} userRating={userRating} />
+
 
 
       {/* Saved note (read-only) */}
