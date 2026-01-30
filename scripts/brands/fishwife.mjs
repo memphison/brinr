@@ -1,14 +1,17 @@
+// scripts/brands/fishwife.mjs
+
+import dotenv from 'dotenv'
+dotenv.config({ path: '.env.local' })
+
 import fs from 'fs'
 import path from 'path'
-
-import 'dotenv/config'
-// scripts/scrape-fishwife.mjs
-
 import * as cheerio from 'cheerio'
+import { classifySeafood } from '../taxonomy/seafoodClassifier.mjs'
 
-console.log('SUPABASE URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+export const brand = 'fishwife'
 
-const COLLECTION_URL = 'https://eatfishwife.com/collections/tinned-fish'
+const COLLECTION_URL =
+  'https://eatfishwife.com/collections/tinned-fish'
 
 const PER_PAGE_DELAY_MS = 250
 const BRAND = 'Fishwife'
@@ -35,27 +38,6 @@ function inferPacking(title) {
   if (t.includes('chili') || t.includes('chilli')) return 'Chili'
   if (t.includes('lemon')) return 'Lemon'
   return 'Other'
-}
-
-function inferFishType(title) {
-  const t = title.toLowerCase()
-  const map = [
-    ['sardine', 'Sardines'],
-    ['anchov', 'Anchovies'],
-    ['mackerel', 'Mackerel'],
-    ['salmon', 'Salmon'],
-    ['trout', 'Trout'],
-    ['tuna', 'Tuna'],
-    ['eel', 'Eel'],
-    ['octopus', 'Octopus'],
-    ['mussel', 'Mussels'],
-  ]
-
-  for (const [needle, label] of map) {
-    if (t.includes(needle)) return label
-  }
-
-  return null
 }
 
 /**
@@ -148,13 +130,15 @@ async function getSupabaseAdminClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!url) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
-  if (!serviceKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+  if (!serviceKey)
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
 
   return { url, serviceKey }
 }
 
 async function supabaseInsertTins(rows) {
-  const { url, serviceKey } = await getSupabaseAdminClient()
+  const { url, serviceKey } =
+    await getSupabaseAdminClient()
 
   const res = await fetch(`${url}/rest/v1/tins`, {
     method: 'POST',
@@ -169,14 +153,16 @@ async function supabaseInsertTins(rows) {
 
   const text = await res.text()
   if (!res.ok) {
-    throw new Error(`Supabase insert failed ${res.status}\n${text}`)
+    throw new Error(
+      `Supabase insert failed ${res.status}\n${text}`
+    )
   }
 
   return JSON.parse(text)
 }
 // --------------------------------
 
-async function main() {
+export async function scrape() {
   console.log('Scraping collection:', COLLECTION_URL)
 
   const links = await extractProductLinks()
@@ -207,19 +193,11 @@ async function main() {
       continue
     }
 
-    // ✅ IMPORTANT FIX:
-    // Do NOT skip the product if fish type inference fails.
-    // Keep the row, set fish_type to 'Other', and log it.
-    const fishType = inferFishType(title) || 'Other'
-    if (fishType === 'Other') {
-      console.log('  ⚠ fish type inferred as Other:', title)
-    }
+    const { fish_type } = classifySeafood(title)
 
     const imageUrl = product.images?.[0]?.src || null
 
-    if (!imageUrl) {
-      console.log('  ⚠ No image found:', title)
-    } else {
+    if (imageUrl) {
       const slug = imageSlug(BRAND, title)
       const outDir = path.join('raw-images', 'fishwife')
       const outPath = path.join(outDir, `${slug}.jpg`)
@@ -235,15 +213,13 @@ async function main() {
         } catch {
           console.log('  ❌ image download failed')
         }
-      } else {
-        console.log('  ↩ image already exists')
       }
     }
 
     rows.push({
       brand: BRAND,
       product_name: title,
-      fish_type: fishType, // <-- now always populated
+      fish_type,
       country: DEFAULT_COUNTRY,
       packing: inferPacking(title),
       notes: null,
@@ -253,23 +229,14 @@ async function main() {
   }
 
   console.log(`Prepared ${rows.length} tins to insert.`)
-  if (!rows.length) return
+  if (!rows.length) return []
 
   const chunkSize = 50
-  let inserted = 0
-
   for (let i = 0; i < rows.length; i += chunkSize) {
-    const chunk = rows.slice(i, i + chunkSize)
-    const result = await supabaseInsertTins(chunk)
-    inserted += result.length
-    console.log(`Inserted ${inserted}`)
+    await supabaseInsertTins(rows.slice(i, i + chunkSize))
     await sleep(250)
   }
 
   console.log('Done.')
+  return rows
 }
-
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
