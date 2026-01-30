@@ -13,7 +13,7 @@ const brandName = brandArg.split('=')[1]
 
 const brands = {
   lacuriosa: () => import('./brands/lacuriosa.mjs'),
-  // josegourmet: () => import('./brands/josegourmet.mjs'),
+  josegourmet: () => import('./brands/josegourmet.mjs'),
   // fishwife: () => import('./brands/fishwife.mjs'),
 }
 

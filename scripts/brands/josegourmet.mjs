@@ -1,9 +1,12 @@
-import 'dotenv/config'
-// scripts/scrape-josegourmet.mjs
+// scripts/brands/josegourmet.mjs
+
+import dotenv from 'dotenv'
+dotenv.config({ path: '.env.local' })
 
 import * as cheerio from 'cheerio'
+import { classifySeafood } from '../taxonomy/seafoodClassifier.mjs'
 
-console.log('SUPABASE URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+export const brand = 'josegourmet'
 
 const COLLECTION_URL =
   'https://josegourmet.com/products/canned-goods'
@@ -64,30 +67,6 @@ function inferPacking(title) {
   return 'Other'
 }
 
-function inferFishType(title) {
-  const t = title.toLowerCase()
-  const map = [
-    ['sardine', 'Sardines'],
-    ['mackerel', 'Mackerel'],
-    ['tuna', 'Tuna'],
-    ['octopus', 'Octopus'],
-    ['squid', 'Squid'],
-    ['cod', 'Cod'],
-    ['salmon', 'Salmon'],
-    ['trout', 'Trout'],
-    ['hake', 'Hake'],
-    ['roe', 'Roe'],
-    ['cockle', 'Cockles'],
-    ['mussel', 'Mussels'],
-  ]
-
-  for (const [needle, label] of map) {
-    if (t.includes(needle)) return label
-  }
-
-  return null
-}
-
 async function fetchHtml(url) {
   const res = await fetch(url, {
     headers: {
@@ -100,9 +79,6 @@ async function fetchHtml(url) {
   return res.text()
 }
 
-/**
- * Step 1: extract ONLY canned-goods product links
- */
 async function extractProductLinks() {
   const html = await fetchHtml(COLLECTION_URL)
   const $ = cheerio.load(html)
@@ -121,9 +97,6 @@ async function extractProductLinks() {
   return Array.from(links)
 }
 
-/**
- * Step 2: extract product title (slug fallback)
- */
 async function fetchProductFromHtml(productUrl) {
   const html = await fetchHtml(productUrl)
   const $ = cheerio.load(html)
@@ -134,7 +107,6 @@ async function fetchProductFromHtml(productUrl) {
     $('title').text()
 
   const metaTitle = cleanTitle(rawMeta)
-
   const title = metaTitle || titleFromSlug(productUrl)
 
   if (!title) {
@@ -182,7 +154,7 @@ async function supabaseInsertTins(rows) {
 }
 // --------------------------------
 
-async function main() {
+export async function scrape() {
   console.log('Scraping collection:', COLLECTION_URL)
 
   const links = await extractProductLinks()
@@ -203,17 +175,18 @@ async function main() {
     }
 
     const title = product.title
-    const fishType = inferFishType(title)
+    const { fish_type } = classifySeafood(title)
 
-    if (!fishType) {
-      console.log('  Skipping non-fish:', title)
+    // Optional: explicitly skip box sets
+    if (title.toLowerCase().includes('box set')) {
+      console.log('  Skipping box set:', title)
       continue
     }
 
     rows.push({
       brand: BRAND,
       product_name: title,
-      fish_type: fishType,
+      fish_type,
       country: DEFAULT_COUNTRY,
       packing: inferPacking(title),
       notes: null,
@@ -223,23 +196,14 @@ async function main() {
   }
 
   console.log(`Prepared ${rows.length} tins to insert.`)
-  if (!rows.length) return
+  if (!rows.length) return []
 
   const chunkSize = 50
-  let inserted = 0
-
   for (let i = 0; i < rows.length; i += chunkSize) {
-    const chunk = rows.slice(i, i + chunkSize)
-    const result = await supabaseInsertTins(chunk)
-    inserted += result.length
-    console.log(`Inserted ${inserted}`)
+    await supabaseInsertTins(rows.slice(i, i + chunkSize))
     await sleep(250)
   }
 
   console.log('Done.')
+  return rows
 }
-
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})

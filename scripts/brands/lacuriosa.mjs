@@ -1,11 +1,12 @@
+// scripts/brands/lacuriosa.mjs
+
 import dotenv from 'dotenv'
 dotenv.config({ path: '.env.local' })
 
 import fs from 'fs'
 import path from 'path'
 import * as cheerio from 'cheerio'
-
-// scripts/brands/lacuriosa.mjs
+import { classifySeafood } from '../taxonomy/seafoodClassifier.mjs'
 
 export const brand = 'lacuriosa'
 
@@ -36,27 +37,6 @@ function inferPacking(title) {
   if (t.includes('escabeche')) return 'Escabeche'
   if (t.includes('pickled')) return 'Pickled'
   return 'Other'
-}
-
-function inferFishType(title) {
-  const t = title.toLowerCase()
-  const map = [
-    ['sardine', 'Sardines'],
-    ['anchov', 'Anchovies'],
-    ['mackerel', 'Mackerel'],
-    ['tuna', 'Tuna'],
-    ['octopus', 'Octopus'],
-    ['squid', 'Squid'],
-    ['mussel', 'Mussels'],
-    ['cockle', 'Cockles'],
-    ['clam', 'Clams'],
-  ]
-
-  for (const [needle, label] of map) {
-    if (t.includes(needle)) return label
-  }
-
-  return 'Unknown'
 }
 
 async function fetchHtml(url) {
@@ -97,7 +77,8 @@ async function extractProductLinks() {
     }
 
     const $ = cheerio.load(html)
-    const productLinks = $('li.product a.woocommerce-LoopProduct-link')
+    const productLinks =
+      $('li.product a.woocommerce-LoopProduct-link')
 
     if (!productLinks.length) break
 
@@ -123,7 +104,8 @@ async function scrapeProduct(url) {
   const title = $('h1').first().text().trim()
   if (!title) throw new Error('No product title')
 
-  const imageUrl = $('img.wp-post-image').attr('src') || null
+  const imageUrl =
+    $('img.wp-post-image').attr('src') || null
 
   return { title, imageUrl }
 }
@@ -141,13 +123,15 @@ async function getSupabaseAdminClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!url) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
-  if (!serviceKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+  if (!serviceKey)
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
 
   return { url, serviceKey }
 }
 
 async function supabaseInsertTins(rows) {
-  const { url, serviceKey } = await getSupabaseAdminClient()
+  const { url, serviceKey } =
+    await getSupabaseAdminClient()
 
   const res = await fetch(`${url}/rest/v1/tins`, {
     method: 'POST',
@@ -162,7 +146,9 @@ async function supabaseInsertTins(rows) {
 
   const text = await res.text()
   if (!res.ok) {
-    throw new Error(`Supabase insert failed ${res.status}\n${text}`)
+    throw new Error(
+      `Supabase insert failed ${res.status}\n${text}`
+    )
   }
 
   return JSON.parse(text)
@@ -191,12 +177,15 @@ export async function scrape() {
       continue
     }
 
-    const slug = imageSlug(BRAND, product.title)
+    const { title, imageUrl } = product
+    const { fish_type } = classifySeafood(title)
+
+    const slug = imageSlug(BRAND, title)
     const imagePath = path.join(outDir, `${slug}.jpg`)
 
-    if (product.imageUrl && !fs.existsSync(imagePath)) {
+    if (imageUrl && !fs.existsSync(imagePath)) {
       try {
-        await downloadImage(product.imageUrl, imagePath)
+        await downloadImage(imageUrl, imagePath)
         console.log('  🖼 downloaded image')
       } catch {
         console.log('  ❌ image download failed')
@@ -205,10 +194,10 @@ export async function scrape() {
 
     rows.push({
       brand: BRAND,
-      product_name: product.title,
-      fish_type: inferFishType(product.title),
+      product_name: title,
+      fish_type,
       country: DEFAULT_COUNTRY,
-      packing: inferPacking(product.title),
+      packing: inferPacking(title),
       notes: null,
     })
 
