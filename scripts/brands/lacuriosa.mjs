@@ -1,14 +1,15 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
+dotenv.config({ path: '.env.local' })
+
 import fs from 'fs'
 import path from 'path'
 import * as cheerio from 'cheerio'
 
-// scripts/scrape-lacuriosa.mjs
+// scripts/brands/lacuriosa.mjs
 
-console.log('SUPABASE URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+export const brand = 'lacuriosa'
 
-const COLLECTION_URL =
-  'https://lacuriosa.es/en/canned-goods/'
+const COLLECTION_URL = 'https://lacuriosa.es/en/canned-goods/'
 
 const PER_PAGE_DELAY_MS = 300
 const BRAND = 'La Curiosa'
@@ -91,13 +92,12 @@ async function extractProductLinks() {
     let html
     try {
       html = await fetchHtml(pageUrl)
-    } catch (e) {
+    } catch {
       break
     }
 
     const $ = cheerio.load(html)
-    const productLinks =
-      $('li.product a.woocommerce-LoopProduct-link')
+    const productLinks = $('li.product a.woocommerce-LoopProduct-link')
 
     if (!productLinks.length) break
 
@@ -123,8 +123,7 @@ async function scrapeProduct(url) {
   const title = $('h1').first().text().trim()
   if (!title) throw new Error('No product title')
 
-  const imageUrl =
-    $('img.wp-post-image').attr('src') || null
+  const imageUrl = $('img.wp-post-image').attr('src') || null
 
   return { title, imageUrl }
 }
@@ -142,15 +141,13 @@ async function getSupabaseAdminClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!url) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
-  if (!serviceKey)
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+  if (!serviceKey) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
 
   return { url, serviceKey }
 }
 
 async function supabaseInsertTins(rows) {
-  const { url, serviceKey } =
-    await getSupabaseAdminClient()
+  const { url, serviceKey } = await getSupabaseAdminClient()
 
   const res = await fetch(`${url}/rest/v1/tins`, {
     method: 'POST',
@@ -165,16 +162,14 @@ async function supabaseInsertTins(rows) {
 
   const text = await res.text()
   if (!res.ok) {
-    throw new Error(
-      `Supabase insert failed ${res.status}\n${text}`
-    )
+    throw new Error(`Supabase insert failed ${res.status}\n${text}`)
   }
 
   return JSON.parse(text)
 }
 // --------------------------------
 
-async function main() {
+export async function scrape() {
   console.log('Scraping La Curiosa canned goods')
 
   const links = await extractProductLinks()
@@ -191,8 +186,8 @@ async function main() {
     let product
     try {
       product = await scrapeProduct(url)
-    } catch (e) {
-      console.log(`  Failed parse, skipping`)
+    } catch {
+      console.log('  Failed parse, skipping')
       continue
     }
 
@@ -221,7 +216,7 @@ async function main() {
   }
 
   console.log(`Prepared ${rows.length} tins to insert.`)
-  if (!rows.length) return
+  if (!rows.length) return []
 
   const chunkSize = 50
   for (let i = 0; i < rows.length; i += chunkSize) {
@@ -230,9 +225,5 @@ async function main() {
   }
 
   console.log('Done.')
+  return rows
 }
-
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
