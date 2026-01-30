@@ -3,9 +3,17 @@ import path from 'path'
 import sharp from 'sharp'
 
 /**
+ * USAGE
+ *   node scripts/brinr-image.mjs fishwife
+ *   node scripts/brinr-image.mjs lacuriosa
+ *
+ * Defaults to "fishwife" if no brand is provided
+ */
+
+/**
  * CONFIG
  */
-const BRAND = 'fishwife' // lowercase folder name
+const BRAND = process.argv[2] || 'fishwife' // lowercase folder name
 const INPUT_DIR = path.join('raw-images', BRAND)
 const OUTPUT_DIR = path.join('brinr-images', BRAND)
 const SIZE = 400
@@ -37,6 +45,11 @@ async function processImage(file) {
     const image = sharp(inputPath)
     const meta = await image.metadata()
 
+    if (!meta.width || !meta.height) {
+      console.error(`❌ invalid image: ${file}`)
+      return
+    }
+
     const size = Math.min(meta.width, meta.height)
 
     await image
@@ -58,13 +71,20 @@ async function processImage(file) {
 
 async function main() {
   if (!fs.existsSync(INPUT_DIR)) {
-    console.error(`Missing input folder: ${INPUT_DIR}`)
+    console.error(`❌ Missing input folder: ${INPUT_DIR}`)
     process.exit(1)
   }
 
   const files = fs.readdirSync(INPUT_DIR).filter(isImage)
 
-  console.log(`brinr-image: processing ${files.length} images for ${BRAND}`)
+  if (!files.length) {
+    console.log(`⚠ No images found in ${INPUT_DIR}`)
+    return
+  }
+
+  console.log(
+    `brinr-image: processing ${files.length} images for "${BRAND}"`
+  )
 
   for (const file of files) {
     await processImage(file)

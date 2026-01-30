@@ -1,7 +1,9 @@
 import 'dotenv/config'
-// scripts/scrape-lacuriosa.mjs
-
+import fs from 'fs'
+import path from 'path'
 import * as cheerio from 'cheerio'
+
+// scripts/scrape-lacuriosa.mjs
 
 console.log('SUPABASE URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
 
@@ -14,6 +16,13 @@ const DEFAULT_COUNTRY = 'Spain'
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
+}
+
+function imageSlug(brand, title) {
+  return `${brand}-${title}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
 }
 
 function inferPacking(title) {
@@ -46,7 +55,7 @@ function inferFishType(title) {
     if (t.includes(needle)) return label
   }
 
-  return null
+  return 'Unknown'
 }
 
 async function fetchHtml(url) {
@@ -65,7 +74,7 @@ async function fetchHtml(url) {
 }
 
 /**
- * Step 1: crawl paginated collection pages (404-safe)
+ * Step 1: crawl paginated collection pages
  */
 async function extractProductLinks() {
   const links = new Set()
@@ -83,12 +92,10 @@ async function extractProductLinks() {
     try {
       html = await fetchHtml(pageUrl)
     } catch (e) {
-      if (e.message.includes('404')) break
-      throw e
+      break
     }
 
     const $ = cheerio.load(html)
-
     const productLinks =
       $('li.product a.woocommerce-LoopProduct-link')
 
@@ -107,16 +114,26 @@ async function extractProductLinks() {
 }
 
 /**
- * Step 2: scrape product page
+ * Step 2: scrape product page (title + image)
  */
 async function scrapeProduct(url) {
   const html = await fetchHtml(url)
   const $ = cheerio.load(html)
 
   const title = $('h1').first().text().trim()
-  if (!title) throw new Error('No product title found')
+  if (!title) throw new Error('No product title')
 
-  return { title }
+  const imageUrl =
+    $('img.wp-post-image').attr('src') || null
+
+  return { title, imageUrl }
+}
+
+async function downloadImage(url, outPath) {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Image fetch failed ${res.status}`)
+  const buffer = Buffer.from(await res.arrayBuffer())
+  fs.writeFileSync(outPath, buffer)
 }
 
 // ---------- SUPABASE ----------
@@ -164,6 +181,8 @@ async function main() {
   console.log(`Found ${links.length} product links.`)
 
   const rows = []
+  const outDir = path.join('raw-images', 'lacuriosa')
+  fs.mkdirSync(outDir, { recursive: true })
 
   for (let i = 0; i < links.length; i++) {
     const url = links[i]
@@ -173,17 +192,26 @@ async function main() {
     try {
       product = await scrapeProduct(url)
     } catch (e) {
-      console.log(`  Failed parse (${e.message}), skipping`)
+      console.log(`  Failed parse, skipping`)
       continue
     }
 
-    const fishType =
-      inferFishType(product.title) ?? 'Unknown'
+    const slug = imageSlug(BRAND, product.title)
+    const imagePath = path.join(outDir, `${slug}.jpg`)
+
+    if (product.imageUrl && !fs.existsSync(imagePath)) {
+      try {
+        await downloadImage(product.imageUrl, imagePath)
+        console.log('  🖼 downloaded image')
+      } catch {
+        console.log('  ❌ image download failed')
+      }
+    }
 
     rows.push({
       brand: BRAND,
       product_name: product.title,
-      fish_type: fishType,
+      fish_type: inferFishType(product.title),
       country: DEFAULT_COUNTRY,
       packing: inferPacking(product.title),
       notes: null,
@@ -196,13 +224,8 @@ async function main() {
   if (!rows.length) return
 
   const chunkSize = 50
-  let inserted = 0
-
   for (let i = 0; i < rows.length; i += chunkSize) {
-    const chunk = rows.slice(i, i + chunkSize)
-    const result = await supabaseInsertTins(chunk)
-    inserted += result.length
-    console.log(`Inserted ${inserted}`)
+    await supabaseInsertTins(rows.slice(i, i + chunkSize))
     await sleep(250)
   }
 
