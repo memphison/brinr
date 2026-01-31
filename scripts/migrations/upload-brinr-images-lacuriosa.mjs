@@ -1,8 +1,11 @@
+// ⚠️ MIGRATION SCRIPT — DO NOT AUTO-RUN
+
+
 import fs from 'fs'
 import path from 'path'
 import 'dotenv/config'
 
-const BRAND = 'fishwife' // lowercase
+const BRAND = 'lacuriosa' // lowercase
 const LOCAL_DIR = path.join('brinr-images', BRAND)
 const BUCKET = 'tin-images'
 

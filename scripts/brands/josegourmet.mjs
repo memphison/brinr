@@ -8,8 +8,7 @@ import { classifySeafood } from '../taxonomy/seafoodClassifier.mjs'
 
 export const brand = 'josegourmet'
 
-const COLLECTION_URL =
-  'https://josegourmet.com/products/canned-goods'
+const COLLECTION_URL = 'https://josegourmet.com/products/canned-goods'
 
 const PER_PAGE_DELAY_MS = 300
 const BRAND = 'Jose Gourmet'
@@ -23,6 +22,7 @@ function sleep(ms) {
 function absUrl(href) {
   if (!href) return null
   if (href.startsWith('http')) return href.split('?')[0]
+  if (href.startsWith('//')) return `https:${href.split('?')[0]}`
   if (href.startsWith('/'))
     return `https://josegourmet.com${href.split('?')[0]}`
   return null
@@ -46,9 +46,7 @@ function cleanTitle(raw) {
     .replace(/\s*\|\s*Jose Gourmet.*/i, '')
     .trim()
 
-  if (
-    cleaned.toLowerCase().includes(BRAND_SLOGAN.toLowerCase())
-  ) {
+  if (cleaned.toLowerCase().includes(BRAND_SLOGAN.toLowerCase())) {
     return null
   }
 
@@ -97,9 +95,64 @@ async function extractProductLinks() {
   return Array.from(links)
 }
 
+function pickFromSrcset(srcset) {
+  if (!srcset) return null
+  const first = String(srcset).split(',')[0]?.trim()
+  if (!first) return null
+  const urlPart = first.split(' ')[0]?.trim()
+  return absUrl(urlPart) || urlPart
+}
+
+function parseLdJsonImage($) {
+  const scripts = $('script[type="application/ld+json"]')
+  for (let i = 0; i < scripts.length; i++) {
+    const raw = $(scripts[i]).text()
+    if (!raw) continue
+    try {
+      const data = JSON.parse(raw)
+
+      const image =
+        data?.image ||
+        data?.[0]?.image ||
+        data?.mainEntity?.image ||
+        data?.mainEntity?.[0]?.image
+
+      if (typeof image === 'string') return absUrl(image) || image
+      if (Array.isArray(image) && image[0]) return absUrl(image[0]) || image[0]
+      if (image?.url) return absUrl(image.url) || image.url
+    } catch {
+      // ignore malformed JSON blocks
+    }
+  }
+  return null
+}
+
 async function fetchProductFromHtml(productUrl) {
   const html = await fetchHtml(productUrl)
   const $ = cheerio.load(html)
+
+  const metaImg =
+    $('meta[property="og:image:secure_url"]').attr('content') ||
+    $('meta[property="og:image"]').attr('content') ||
+    $('meta[name="twitter:image"]').attr('content') ||
+    null
+
+  const ldImg = parseLdJsonImage($)
+
+  const firstImg =
+    $('img[src]').first().attr('src') ||
+    null
+
+  const firstSrcset =
+    pickFromSrcset($('img[srcset]').first().attr('srcset')) ||
+    null
+
+  const source_image_url =
+    absUrl(metaImg) ||
+    absUrl(ldImg) ||
+    absUrl(firstSrcset) ||
+    absUrl(firstImg) ||
+    null
 
   const rawMeta =
     $('meta[name="twitter:title"]').attr('content') ||
@@ -109,50 +162,10 @@ async function fetchProductFromHtml(productUrl) {
   const metaTitle = cleanTitle(rawMeta)
   const title = metaTitle || titleFromSlug(productUrl)
 
-  if (!title) {
-    throw new Error('No valid product title found')
-  }
+  if (!title) throw new Error('No valid product title found')
 
-  return { title }
+  return { title, source_image_url }
 }
-
-// ---------- SUPABASE ----------
-async function getSupabaseAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
-  if (!serviceKey)
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
-
-  return { url, serviceKey }
-}
-
-async function supabaseInsertTins(rows) {
-  const { url, serviceKey } =
-    await getSupabaseAdminClient()
-
-  const res = await fetch(`${url}/rest/v1/tins`, {
-    method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-    },
-    body: JSON.stringify(rows),
-  })
-
-  const text = await res.text()
-  if (!res.ok) {
-    throw new Error(
-      `Supabase insert failed ${res.status}\n${text}`
-    )
-  }
-
-  return JSON.parse(text)
-}
-// --------------------------------
 
 export async function scrape() {
   console.log('Scraping collection:', COLLECTION_URL)
@@ -175,35 +188,22 @@ export async function scrape() {
     }
 
     const title = product.title
-    const { fish_type } = classifySeafood(title)
-
-    // Optional: explicitly skip box sets
-    if (title.toLowerCase().includes('box set')) {
-      console.log('  Skipping box set:', title)
-      continue
-    }
+    const seafood = classifySeafood(title)
 
     rows.push({
       brand: BRAND,
       product_name: title,
-      fish_type,
+      fish_type: seafood.fish_type ?? 'Other',
       country: DEFAULT_COUNTRY,
       packing: inferPacking(title),
+      source_url: url,
+      source_image_url: product.source_image_url,
       notes: null,
     })
 
     await sleep(PER_PAGE_DELAY_MS)
   }
 
-  console.log(`Prepared ${rows.length} tins to insert.`)
-  if (!rows.length) return []
-
-  const chunkSize = 50
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    await supabaseInsertTins(rows.slice(i, i + chunkSize))
-    await sleep(250)
-  }
-
-  console.log('Done.')
+  console.log(`Prepared ${rows.length} tins.`)
   return rows
 }

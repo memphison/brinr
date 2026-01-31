@@ -3,8 +3,6 @@
 import dotenv from 'dotenv'
 dotenv.config({ path: '.env.local' })
 
-import fs from 'fs'
-import path from 'path'
 import * as cheerio from 'cheerio'
 import { classifySeafood } from '../taxonomy/seafoodClassifier.mjs'
 
@@ -43,8 +41,8 @@ function inferPacking(title) {
 /**
  * Exclude ONLY true non-tin products
  */
-function isNonTin(product) {
-  const t = (product?.title || '').toLowerCase()
+function isNonTin(title) {
+  const t = title.toLowerCase()
 
   return [
     'hat',
@@ -55,7 +53,6 @@ function isNonTin(product) {
     'gift',
     'starter',
     'build your own',
-    'caviar',
   ].some((w) => t.includes(w))
 }
 
@@ -70,9 +67,6 @@ async function fetchHtml(url) {
   return res.text()
 }
 
-/**
- * Step 1: extract product links
- */
 async function extractProductLinks() {
   const html = await fetchHtml(COLLECTION_URL)
   const $ = cheerio.load(html)
@@ -88,25 +82,8 @@ async function extractProductLinks() {
   return Array.from(links)
 }
 
-function imageSlug(brand, title) {
-  return `${brand}-${title}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-}
-
-async function downloadImage(url, outPath) {
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Image fetch failed ${res.status}`)
-  }
-
-  const buffer = Buffer.from(await res.arrayBuffer())
-  fs.writeFileSync(outPath, buffer)
-}
-
 /**
- * Step 2: fetch Shopify product JSON
+ * Fetch Shopify product JSON
  */
 async function fetchProductJSON(productUrl) {
   const res = await fetch(`${productUrl}.json`, {
@@ -124,46 +101,8 @@ async function fetchProductJSON(productUrl) {
   return data.product
 }
 
-// ---------- SUPABASE ----------
-async function getSupabaseAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
-  if (!serviceKey)
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
-
-  return { url, serviceKey }
-}
-
-async function supabaseInsertTins(rows) {
-  const { url, serviceKey } =
-    await getSupabaseAdminClient()
-
-  const res = await fetch(`${url}/rest/v1/tins`, {
-    method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-    },
-    body: JSON.stringify(rows),
-  })
-
-  const text = await res.text()
-  if (!res.ok) {
-    throw new Error(
-      `Supabase insert failed ${res.status}\n${text}`
-    )
-  }
-
-  return JSON.parse(text)
-}
-// --------------------------------
-
 export async function scrape() {
-  console.log('Scraping collection:', COLLECTION_URL)
+  console.log('Scraping Fishwife collection')
 
   const links = await extractProductLinks()
   console.log(`Found ${links.length} product links.`)
@@ -182,61 +121,34 @@ export async function scrape() {
       continue
     }
 
-    if (isNonTin(product)) {
-      console.log('  Skipping non-tin:', product.title)
-      continue
-    }
-
-    const title = product.title?.trim()
+    const title = product?.title?.trim()
     if (!title) {
-      console.log('  ⚠ Missing title, skipping')
+      console.log('  Missing title, skipping')
       continue
     }
 
-    const { fish_type } = classifySeafood(title)
-
-    const imageUrl = product.images?.[0]?.src || null
-
-    if (imageUrl) {
-      const slug = imageSlug(BRAND, title)
-      const outDir = path.join('raw-images', 'fishwife')
-      const outPath = path.join(outDir, `${slug}.jpg`)
-
-      if (!fs.existsSync(outDir)) {
-        fs.mkdirSync(outDir, { recursive: true })
-      }
-
-      if (!fs.existsSync(outPath)) {
-        try {
-          await downloadImage(imageUrl, outPath)
-          console.log('  🖼 downloaded image')
-        } catch {
-          console.log('  ❌ image download failed')
-        }
-      }
+    if (isNonTin(title)) {
+      console.log('  Skipping non-tin:', title)
+      continue
     }
+
+    const seafood = classifySeafood(title)
+    const imageUrl = product.images?.[0]?.src || null
 
     rows.push({
       brand: BRAND,
       product_name: title,
-      fish_type,
+      fish_type: seafood.fish_type ?? 'Other',
       country: DEFAULT_COUNTRY,
       packing: inferPacking(title),
+      source_url: url,
+      source_image_url: imageUrl,
       notes: null,
     })
 
     await sleep(PER_PAGE_DELAY_MS)
   }
 
-  console.log(`Prepared ${rows.length} tins to insert.`)
-  if (!rows.length) return []
-
-  const chunkSize = 50
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    await supabaseInsertTins(rows.slice(i, i + chunkSize))
-    await sleep(250)
-  }
-
-  console.log('Done.')
+  console.log(`Prepared ${rows.length} tins.`)
   return rows
 }

@@ -3,8 +3,6 @@
 import dotenv from 'dotenv'
 dotenv.config({ path: '.env.local' })
 
-import fs from 'fs'
-import path from 'path'
 import * as cheerio from 'cheerio'
 import { classifySeafood } from '../taxonomy/seafoodClassifier.mjs'
 
@@ -18,13 +16,6 @@ const DEFAULT_COUNTRY = 'Spain'
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
-}
-
-function imageSlug(brand, title) {
-  return `${brand}-${title}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
 }
 
 function inferPacking(title) {
@@ -54,9 +45,6 @@ async function fetchHtml(url) {
   return res.text()
 }
 
-/**
- * Step 1: crawl paginated collection pages
- */
 async function extractProductLinks() {
   const links = new Set()
   let page = 1
@@ -77,8 +65,7 @@ async function extractProductLinks() {
     }
 
     const $ = cheerio.load(html)
-    const productLinks =
-      $('li.product a.woocommerce-LoopProduct-link')
+    const productLinks = $('li.product a.woocommerce-LoopProduct-link')
 
     if (!productLinks.length) break
 
@@ -94,10 +81,7 @@ async function extractProductLinks() {
   return Array.from(links)
 }
 
-/**
- * Step 2: scrape product page (title + image)
- */
-async function scrapeProduct(url) {
+async function fetchProduct(url) {
   const html = await fetchHtml(url)
   const $ = cheerio.load(html)
 
@@ -110,51 +94,6 @@ async function scrapeProduct(url) {
   return { title, imageUrl }
 }
 
-async function downloadImage(url, outPath) {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Image fetch failed ${res.status}`)
-  const buffer = Buffer.from(await res.arrayBuffer())
-  fs.writeFileSync(outPath, buffer)
-}
-
-// ---------- SUPABASE ----------
-async function getSupabaseAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL')
-  if (!serviceKey)
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
-
-  return { url, serviceKey }
-}
-
-async function supabaseInsertTins(rows) {
-  const { url, serviceKey } =
-    await getSupabaseAdminClient()
-
-  const res = await fetch(`${url}/rest/v1/tins`, {
-    method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-    },
-    body: JSON.stringify(rows),
-  })
-
-  const text = await res.text()
-  if (!res.ok) {
-    throw new Error(
-      `Supabase insert failed ${res.status}\n${text}`
-    )
-  }
-
-  return JSON.parse(text)
-}
-// --------------------------------
-
 export async function scrape() {
   console.log('Scraping La Curiosa canned goods')
 
@@ -162,8 +101,6 @@ export async function scrape() {
   console.log(`Found ${links.length} product links.`)
 
   const rows = []
-  const outDir = path.join('raw-images', 'lacuriosa')
-  fs.mkdirSync(outDir, { recursive: true })
 
   for (let i = 0; i < links.length; i++) {
     const url = links[i]
@@ -171,48 +108,29 @@ export async function scrape() {
 
     let product
     try {
-      product = await scrapeProduct(url)
+      product = await fetchProduct(url)
     } catch {
       console.log('  Failed parse, skipping')
       continue
     }
 
-    const { title, imageUrl } = product
-    const { fish_type } = classifySeafood(title)
-
-    const slug = imageSlug(BRAND, title)
-    const imagePath = path.join(outDir, `${slug}.jpg`)
-
-    if (imageUrl && !fs.existsSync(imagePath)) {
-      try {
-        await downloadImage(imageUrl, imagePath)
-        console.log('  🖼 downloaded image')
-      } catch {
-        console.log('  ❌ image download failed')
-      }
-    }
+    const seafood = classifySeafood(product.title)
 
     rows.push({
-      brand: BRAND,
-      product_name: title,
-      fish_type,
-      country: DEFAULT_COUNTRY,
-      packing: inferPacking(title),
-      notes: null,
-    })
+  brand: BRAND,
+  product_name: product.title,
+  fish_type,
+  country: DEFAULT_COUNTRY,
+  packing: inferPacking(product.title),
+  source_url: url,
+  source_image_url: product.imageUrl,
+  notes: null,
+})
+
 
     await sleep(PER_PAGE_DELAY_MS)
   }
 
-  console.log(`Prepared ${rows.length} tins to insert.`)
-  if (!rows.length) return []
-
-  const chunkSize = 50
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    await supabaseInsertTins(rows.slice(i, i + chunkSize))
-    await sleep(250)
-  }
-
-  console.log('Done.')
+  console.log(`Prepared ${rows.length} tins.`)
   return rows
 }
